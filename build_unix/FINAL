@@ -1,0 +1,13 @@
+./libtool --mode=compile cc -c -I. -I../src  -D_GNU_SOURCE -D_REENTRANT -O3  ../examples/c/coconut.c
+libtool: compile:  cc -c -I. -I../src -D_GNU_SOURCE -D_REENTRANT -O3 ../examples/c/coconut.c  -fPIC -DPIC -o .libs/coconut.o
+libtool: compile:  cc -c -I. -I../src -D_GNU_SOURCE -D_REENTRANT -O3 ../examples/c/coconut.c -o coconut.o >/dev/null 2>&1
+./libtool --mode=compile cc -c -I. -I../src  -D_GNU_SOURCE -D_REENTRANT -O3  ../examples/c/coconut_plus.c
+libtool: compile:  cc -c -I. -I../src -D_GNU_SOURCE -D_REENTRANT -O3 ../examples/c/coconut_plus.c  -fPIC -DPIC -o .libs/coconut_plus.o
+libtool: compile:  cc -c -I. -I../src -D_GNU_SOURCE -D_REENTRANT -O3 ../examples/c/coconut_plus.c -o coconut_plus.o >/dev/null 2>&1
+./libtool --mode=link cc -O3  -o coconut_plus  coconut_plus.lo libdb-6.2.la -lpthread -lmt -lm
+libtool: link: cc -O3 -o .libs/coconut_plus .libs/coconut_plus.o  ./.libs/libdb-6.2.so -lpthread -lmt -lm  -Wl,-rpath -Wl,/usr/local/BerkeleyDB.6.2/lib
+./libtool --mode=execute true coconut_plus
+./libtool --mode=link cc -O3  -o coconut  coconut.lo libdb-6.2.la -lpthread -lmt -lm
+libtool: link: cc -O3 -o .libs/coconut .libs/coconut.o  ./.libs/libdb-6.2.so -lpthread -lmt -lm  -Wl,-rpath -Wl,/usr/local/BerkeleyDB.6.2/lib
+./libtool --mode=execute true coconut
+Thu Dec 14 02:13:51 EET 2017
