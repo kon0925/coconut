@@ -8,3 +8,7 @@ Installation Instructions
     5. make
     6. make coconut
     7. to run it check the run.sh file
+    
+
+Source code for the paper:
+Haridimos Kondylakis, Niv Dayan, Kostas Zoumpatianos, Themis Palpanas: Coconut: A Scalable Bottom-Up Approach for Building Data Series Indexes. PVLDB 11(6): 677-690 (2018) 
