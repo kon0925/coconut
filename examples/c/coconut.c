@@ -767,7 +767,8 @@ double external_sort_merge(const char *ifilename, int ts_num, int max_total_full
 
              runs++;
 
- 	     mergesort_mts(currqueue, currcount, sizeof(my_node),  myz_compare, 16);
+ 	     //mergesort_mts(currqueue, currcount, sizeof(my_node),  myz_compare, 16);
+ 	     qsort(currqueue, currcount, sizeof(my_node),  myz_compare);
 
 	     if(currcount>0)
              {
@@ -1231,7 +1232,7 @@ coconut(int ts_num, int memory, int EXACT, int queriesnumber, int indexing, int 
         int sax_bit_cardinality=8;
 
 
-	if(indexing==1)
+	if(indexing!=0)
 	{
 		(void)remove(DATABASE);
 	
@@ -1319,117 +1320,107 @@ coconut(int ts_num, int memory, int EXACT, int queriesnumber, int indexing, int 
     	
 	my_node * currqueue=(my_node *)malloc(sizeof(my_node)*ts_num);
 
+
+	if(indexing!=0)
+	{	
+		current_time = time(NULL);
+    		c_time_string = ctime(&current_time);
+    		printf("\nIndexing starting at %s for %d data series  with %d memory and leafsize:%d", c_time_string, ts_num, memory, leafsize);
 	
-	current_time = time(NULL);
-    	c_time_string = ctime(&current_time);
-    	printf("\nIndexing starting at %s for %d data series  with %d memory and leafsize:%d", c_time_string, ts_num, memory, leafsize);
-	timer_start(&start);	
+	
+		timer_start(&start);	
 		
-	double subtract=0;
-	if(memory>=ts_num)
-	{
-		timer_start(&iostart);	
-		if ((fp = fopen(dataset, "r")) == NULL) {
-			fprintf(stderr, "%s: open %s: %s\n",
-			    progname, dataset, db_strerror(errno));
-			return (1);
-		}
-		ioduration = timer_end(&iostart);
+		double subtract=0;
 
-		for (cnt = 0; cnt < ts_num; ++cnt) 
+		if(memory>=ts_num)
 		{
-
 			timer_start(&iostart);	
+			if ((fp = fopen(dataset, "r")) == NULL) {
+				fprintf(stderr, "%s: open %s: %s\n",
+				    progname, dataset, db_strerror(errno));
+				return (1);
+			}
+			ioduration = timer_end(&iostart);
+
+			for (cnt = 0; cnt < ts_num; ++cnt) 
+			{
+
+				timer_start(&iostart);	
 			
-			//if(indexing==1 && ts_num>memory)
-			//{
-			//	currqueue[cnt].fileposition= (unsigned long long *)malloc(sizeof(unsigned long long));
-                	//	*(currqueue[cnt].fileposition)= ftell(fp);
-			//}
+				fread(ts, sizeof(float), timeseries_size, fp);
+				ioduration += timer_end(&iostart);
 
 
-			fread(ts, sizeof(float), timeseries_size, fp);
-			ioduration += timer_end(&iostart);
+				if(sax_from_ts2( ((float *)ts), ((unsigned char *)  sax), ts_values_per_segment,
+                        	       paa_segments, sax_alphabet_cardinality,
+                               		sax_bit_cardinality) == 1)
+                		{
 
+					currqueue[cnt].ts = (float *)malloc(sizeof(float) * timeseries_size);
+					memcpy(currqueue[cnt].ts, ts, sizeof(float)*timeseries_size);
 
-			if(sax_from_ts2( ((float *)ts), ((unsigned char *)  sax), ts_values_per_segment,
-                               paa_segments, sax_alphabet_cardinality,
-                               sax_bit_cardinality) == 1)
-                	{
+					currqueue[cnt].invsax = malloc(sizeof(unsigned char)*paa_segments);
+                        		invSax(currqueue[cnt].invsax,  sax, paa_segments ,sax_bit_cardinality);	
 
-				currqueue[cnt].ts = (float *)malloc(sizeof(float) * timeseries_size);
-				memcpy(currqueue[cnt].ts, ts, sizeof(float)*timeseries_size);
-
-				currqueue[cnt].invsax = malloc(sizeof(unsigned char)*paa_segments);
-                        	invSax(currqueue[cnt].invsax,  sax, paa_segments ,sax_bit_cardinality);	
-
-				if(EXACT==1)
-				{
-					currqueue[cnt].sax = malloc(sizeof(unsigned char)*paa_segments);
-					memcpy(currqueue[cnt].sax, sax, sizeof(unsigned char)*paa_segments);
-				}
 				
-                	}
-                	else //if sax != success
-                	{
-                	    fprintf(stderr, "error: cannot insert record in index, since sax representation\
-                        	    failed to be created");
+                		}
+                		else //if sax != success
+                		{
+                			fprintf(stderr, "error: cannot insert record in index, since sax representation\
+                        	    	failed to be created");
                 	} //end sax!=success
 
+			}//end for
+			if(debug==1)
+			{
+	    			printf("\nSorting started");
+				fflush(stdout);
+			}
 
-
-		}//end for
-		if(debug==1)
-		{
-	    		printf("\nSorting started");
-			fflush(stdout);
-		}
-
-		timer_start(&sortstart);	
-		mergesort_mts(((void *)currqueue), ((size_t)ts_num), ((size_t)sizeof(my_node)),  myz_compare,16);
-		durationsort = timer_end(&sortstart);
+			timer_start(&sortstart);	
+			//mergesort_mts(((void *)currqueue), ((size_t)ts_num), ((size_t)sizeof(my_node)),  myz_compare,16);
+			qsort(((void *)currqueue), ((size_t)ts_num), ((size_t)sizeof(my_node)),  myz_compare);
+			durationsort = timer_end(&sortstart);
 		
-		if(debug==1)
+			if(debug==1)
+			{
+    				printf("\nSorting ended");
+				fflush(stdout);
+			}
+			fclose(fp);
+		}//end if data fit in main memory
+		else
 		{
-    			printf("\nSorting ended");
-			fflush(stdout);
-		}
-		fclose(fp);
-	}//end if data fit in main memory
-	else
-	{
-		if(debug==1)
-		{
-	    		printf("\nSorting started");
-			fflush(stdout);
-		}
-		timer_start(&sortstart);	
-		subtract=external_sort_merge(dataset, ts_num, memory, timeseries_size, paa_segments, ts_values_per_segment, sax_alphabet_cardinality, sax_bit_cardinality);
-		durationsort = timer_end(&sortstart);
-		if(debug==1)
-		{
-    			printf("\nSorting ended");
-			fflush(stdout);
-		}
+			if(debug==1)
+			{
+	    			printf("\nSorting started");
+				fflush(stdout);
+			}
+			timer_start(&sortstart);	
+			subtract=external_sort_merge(dataset, ts_num, memory, timeseries_size, paa_segments, ts_values_per_segment, sax_alphabet_cardinality, sax_bit_cardinality);
+			durationsort = timer_end(&sortstart);
+			if(debug==1)
+			{
+    				printf("\nSorting ended");
+				fflush(stdout);
+			}
 
 
-		char* sortedfilename = malloc(255);
-        	FILE *sortedfile;
-        	snprintf(sortedfilename, 255, "%s.%d.ordered",dataset,ts_num);
-		timer_start(&iostart);	
-		if ((fp = fopen(sortedfilename, "r")) == NULL) {
-			fprintf(stderr, "%s: open %s: %s\n",
-			    progname, sortedfilename, db_strerror(errno));
-			return (1);
-		}
-		ioduration = timer_end(&iostart);
+			char* sortedfilename = malloc(255);
+        		FILE *sortedfile;
+        		snprintf(sortedfilename, 255, "%s.%d.ordered",dataset,ts_num);
+			timer_start(&iostart);	
+			if ((fp = fopen(sortedfilename, "r")) == NULL) {
+				fprintf(stderr, "%s: open %s: %s\n",
+				    progname, sortedfilename, db_strerror(errno));
+				return (1);
+			}
+			ioduration = timer_end(&iostart);
 
-	}
+		}
 
 
 	
-	if(indexing==1)
-	{
 		cnt=0;
 		while(cnt<ts_num)
 		{
@@ -1445,12 +1436,6 @@ coconut(int ts_num, int memory, int EXACT, int queriesnumber, int indexing, int 
 				tmpcnt=0;
 				markvalue=cnt;
 		
-				//if(debug==1)	
-				//{
-				//	printf("\n Current position%d", cnt);
-				//	fflush(stdout);
-				//}
-					
 
 				while(tmpcnt<memory && cnt<ts_num)
 				{
@@ -1458,54 +1443,24 @@ coconut(int ts_num, int memory, int EXACT, int queriesnumber, int indexing, int 
 					tsqueue[tmpcnt].ts = (float *)malloc(sizeof(float) * timeseries_size);
 				
 					timer_start(&iostart);	
-					///if(overridesorting==0)
-					//{
-					//	fseek(fp, *(currqueue[cnt].fileposition), SEEK_SET);
-                    			//}
-					//
-					//currqueue[tmpcnt].ts = (float *)malloc(sizeof(float) * timeseries_size);
-					//fread(currqueue[tmpcnt].ts, sizeof(float), timeseries_size, fp);
+					
 					fread(tsqueue[tmpcnt].ts, sizeof(float), timeseries_size, fp);
 					ioduration += timer_end(&iostart);
 
 
 					sax_from_ts2( ((float *)tsqueue[tmpcnt].ts), ((unsigned char *)  sax), ts_values_per_segment,
-						//sax_from_ts2( ((float *)currqueue[tmpcnt].ts), ((unsigned char *)  sax), ts_values_per_paa_segment,
                                				paa_segments, sax_alphabet_cardinality,
                                				sax_bit_cardinality);
 
 					currqueue[cnt].invsax = malloc(sizeof(unsigned char)*paa_segments);
                         		invSax(currqueue[cnt].invsax,  sax, paa_segments ,sax_bit_cardinality);	
 					
-					
-					if(EXACT==1)
-					{
-					currqueue[cnt].sax = malloc(sizeof(unsigned char)*paa_segments);
-					memcpy(currqueue[cnt].sax, sax, sizeof(unsigned char)*paa_segments);
-					}
-					//ts_print(tsqueue[tmpcnt].ts, 8);
-
-					//fread(ts, sizeof(float), timeseries_size, fp);
-					//ts_print(ts, 8);
-		    		
-					//DB_MULTIPLE_WRITE_NEXT(poskey, &keybulk, currqueue[cnt].value, (paa_segments*sax_bit_cardinality)+1);
-					//assert(poskey!=NULL);
-                    			//DB_MULTIPLE_WRITE_NEXT(posdata, &databulk, ts, sizeof(float)*timeseries_size);
-					//assert(posdata!=NULL);
-					//printf("\nbaaaa\n");fflush(stdout);
 					tmpcnt++;
 					cnt++;
 		    	   		
-					//free(currqueue[cnt].fileposition);
 
 				}//end while
-				//printf("\nbaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");fflush(stdout);
 
-				//if(debug==1)	
-				//{
-				//printf("\n Current having read%d", cnt);
-				//fflush(stdout);
-				//}
 			}
 			else
 			{
@@ -1615,389 +1570,370 @@ coconut(int ts_num, int memory, int EXACT, int queriesnumber, int indexing, int 
 		}//end while
 		
 		
+        	int ts_loaded=0;
+        	while (ts_loaded<ts_num)
+        	{
+	 		free(currqueue[ts_loaded].invsax);
+                	ts_loaded++;
+        	}
 
 		duration = timer_end(&start);
        		printf("\n[STAT] Insert %lld records",   ts_num);
-       		printf(" in %f seconds (durationsort:%f, total:%f,subtract:%f ) ", (duration-subtract), (durationsort-subtract), durationsort, subtract);
+       		printf(" in %f seconds (sorting:%f) ", (duration-subtract), (durationsort-subtract));
 
 		//free(keybulk.data);
 		//free(databulk.data);
-		dbp->compact(dbp, NULL, NULL, NULL, NULL,DB_FREE_SPACE , NULL);
-		if ((ret = dbp->close(dbp, 0)) != 0) {
+		//dbp->compact(dbp, NULL, NULL, NULL, NULL,DB_FREE_SPACE , NULL);
+		//if ((ret = dbp->close(dbp, 0)) != 0) {
+		//	fprintf(stderr,
+	    	//	"%s: DB->close: %s\n", progname, db_strerror(ret));
+		//	return (1);
+		//}
+		
+		timer_start(&iostart);	
+		if(memory<ts_num)
+			(void)fclose(fp);
+		
+		ioduration += timer_end(&iostart);
+       		printf("\n IOs time:%f \n", ioduration);fflush(stdout);
+	}
+
+	
+	if(indexing!=1)
+	{	
+
+	
+		/* Create the database handle.*/ 
+		if ((ret = db_create(&dbp, NULL, 0)) != 0) {
 			fprintf(stderr,
-	    		"%s: DB->close: %s\n", progname, db_strerror(ret));
+			    "%s: db_create: %s\n", progname, db_strerror(ret));
 			return (1);
 		}
-	}
 	
+		if ((ret = dbp->open(dbp,
+		    NULL, DATABASE, NULL, DB_BTREE, DB_RDONLY, 0664)) != 0) {
+			dbp->err(dbp, ret, "open: %s", DATABASE);
+			return (1);
+		}
 
+		/* Get the database statistics and print the total number of records. */
+		if ((ret = dbp->stat(dbp, NULL, &statp, 0)) != 0) {
+			dbp->err(dbp, ret, "DB->stat");
+			goto err1;
+		}
+		printf("\n%s: database contains %lu records in %lu leafs with minkeysperlead:%lu\n",
+	   	 	progname, (u_long)statp->bt_ndata, (u_long)statp->bt_leaf_pg, (u_long)statp->bt_minkey);
+		free(statp);
+
+    		current_time = time(NULL);
+    		c_time_string = ctime(&current_time);
+    		printf("\nQuerying starting at %s", c_time_string);
+
+		/////////////////////////////////////SEARCH
 	
-	timer_start(&iostart);	
-	if(memory<ts_num)
-		(void)fclose(fp);
-	ioduration += timer_end(&iostart);
-       	printf("\n IO read:%f ", ioduration);fflush(stdout);
+		if ((qfp = fopen(queries, "r")) == NULL) {
+			fprintf(stderr, "%s: open %s: %s\n",
+			    progname, queries, db_strerror(errno));
+			return (1);
+		}
 
-//////////////////////////////// NEW CODE
+		/* Acquire a cursor for sequential access to the database. */
+		if ((ret = dbp->cursor(dbp, NULL, &dbcp, 0)) != 0) {
+			dbp->err(dbp, ret, "DB->cursor");
+			goto err1;
+		}
+
+		float mindist=MAXFLOAT;
+		float dist;
+
+		memset(&key, 0, sizeof(key));
+		memset(&data, 0, sizeof(data));
+
+
+
+		my_node * keys;
+		if(EXACT==1)
+		{
+			printf(" exact ");
+			if ((fp = fopen(dataset, "r")) == NULL) {
+                        	fprintf(stderr, "%s: open %s: %s\n",
+	                            progname, dataset, db_strerror(errno));
+        	                return (1);
+                	}
+
+                	keys=(my_node *)malloc(sizeof(my_node)*ts_num);
+	                int i;
+        	        for(i=0;i<ts_num;i++)
+                	{
+                        	keys[i].sax = (unsigned char *)  malloc(sizeof(unsigned char) * paa_segments);
+                        	keys[i].invsax = (unsigned char *)  malloc(sizeof(unsigned char) * paa_segments);
+                        	fread(ts, sizeof(float), timeseries_size, fp);
 	
-	/* Create the database handle.*/ 
-	if ((ret = db_create(&dbp, NULL, 0)) != 0) {
-		fprintf(stderr,
-		    "%s: db_create: %s\n", progname, db_strerror(ret));
-		return (1);
-	}
-	
-	if ((ret = dbp->open(dbp,
-	    NULL, DATABASE, NULL, DB_BTREE, DB_RDONLY, 0664)) != 0) {
-		dbp->err(dbp, ret, "open: %s", DATABASE);
-		return (1);
-	}
+        	                //sax_from_ts2( ((float *)ts), ((unsigned char *) keys[i].sax), ts_values_per_paa_segment,
+				sax_from_ts2( ((float *)ts), ((unsigned char *) keys[i]. sax), ts_values_per_segment,
+                	                      paa_segments, sax_alphabet_cardinality,
+                        	              sax_bit_cardinality);
+				
+                        	invSax(keys[i].invsax,  keys[i].sax, paa_segments ,sax_bit_cardinality);	
 
-	/* Get the database statistics and print the total number of records. */
-	if ((ret = dbp->stat(dbp, NULL, &statp, 0)) != 0) {
-		dbp->err(dbp, ret, "DB->stat");
-		goto err1;
-	}
-	printf("\n%s: database contains %lu records in %lu leafs with minkeysperlead:%lu\n",
-	    progname, (u_long)statp->bt_ndata, (u_long)statp->bt_leaf_pg, (u_long)statp->bt_minkey);
-	free(statp);
+                	}	
+ 	     			
+			qsort(keys, ts_num, sizeof(my_node),  myz_compare);
+			fclose(fp);
 
-    	current_time = time(NULL);
-    	c_time_string = ctime(&current_time);
-    	printf("\nQuerying starting at %s", c_time_string);
-
-/////////////////////////////////////SEARCH
-
-if ((qfp = fopen(queries, "r")) == NULL) {
-	fprintf(stderr, "%s: open %s: %s\n",
-	    progname, queries, db_strerror(errno));
-	return (1);
-}
-
-/* Acquire a cursor for sequential access to the database. */
-if ((ret = dbp->cursor(dbp, NULL, &dbcp, 0)) != 0) {
-	dbp->err(dbp, ret, "DB->cursor");
-	goto err1;
-}
-
-float mindist=MAXFLOAT;
-float dist;
-
-memset(&key, 0, sizeof(key));
-memset(&data, 0, sizeof(data));
-
-
-
-//my_node_sax * keys;
-if(EXACT==1)
-	printf(" exact ");
-else
-	printf(" approximate ");
+		}
+		else
+			printf(" approximate ");
 
 
 
 
-float avdist=0;
-float avdistapprox=0;
-int nodesvisited=0;
-duration=0;
+		float avdist=0;
+		float avdistapprox=0;
+		int nodesvisited=0;
+		duration=0;
 
 
-data.data=(float *)malloc(sizeof(float) * timeseries_size);
+		data.data=(float *)malloc(sizeof(float) * timeseries_size);
 
-for (cnt = 0; cnt < queriesno; ++cnt) {
+		for (cnt = 0; cnt < queriesno; ++cnt) {
 
-	qts = (float *)malloc(sizeof(float) * timeseries_size);
-	float * mqts = (float *)malloc(sizeof(float) * timeseries_size);
-	fread(qts, sizeof(float), timeseries_size, qfp);
+			qts = (float *)malloc(sizeof(float) * timeseries_size);
+			float * mqts = (float *)malloc(sizeof(float) * timeseries_size);
+			fread(qts, sizeof(float), timeseries_size, qfp);
 
 
-        if(sax_from_ts2( ((float *)qts), ((unsigned char *) sax), ts_values_per_segment,
+        		if(sax_from_ts2( ((float *)qts), ((unsigned char *) sax), ts_values_per_segment,
                                paa_segments, sax_alphabet_cardinality,
                                sax_bit_cardinality) == 1)
-       {
-                invSax(invsax,  sax, paa_segments ,sax_bit_cardinality);	
-	      	key.data=invsax;
-	      	key.size=sizeof(unsigned char)*paa_segments;
+       			{
+        	        	invSax(invsax,  sax, paa_segments ,sax_bit_cardinality);	
+		      		key.data=invsax;
+		      		key.size=sizeof(unsigned char)*paa_segments;
 
 			
-		//printf("\nSearch:%s\nSearch:", value);
-		//ts_print(qts, 8);
+				//printf("\nSearch:%s\nSearch:", value);
+				//ts_print(qts, 8);
 
-        }
-        else //if sax != success
-        {
-              fprintf(stderr, "error: cannot insert record in index, since sax representation\
-                     failed to be created");
-        } //end sax!=success
-
-
+        		}
+        		else //if sax != success
+        		{
+        		      fprintf(stderr, "error: cannot insert record in index, since sax representation\
+        		             failed to be created");
+        		} //end sax!=success
 
 
-timer_start(&start);	
+
+
+			timer_start(&start);	
 
 		
-		//printf("\naaaaaaaaaaaaaaaaaaaa");fflush(stdout);
+			//printf("\naaaaaaaaaaaaaaaaaaaa");fflush(stdout);
 
 	
-		dbcp->get(dbcp, &key, &data, DB_SET_RANGE);
-		//printf("\nFetch :%s\nFetch :", key.data);
-		//ts_print(data.data, 256);
-
-		//printf("\n -----------\n ");fflush(stdout);
-
-		mindist = my_ts_euclidean_distance((float *) qts,(float *)(data.data) , 256, MAXFLOAT);
-		//printf("\n -----------\n ");fflush(stdout);
-
-		//printf("\nMINDIST %f",mindist); 
-	
-		if(mindist!=0)
-		{
-			
-			//printf("\naaaaaaaaaaaaaaaaaaaa %d %f\n", cnt, mindist);fflush(stdout);
-			//ts_print(qts, 256);
-			//printf("\n");
-			//sax_print(sax, paa_segments,sax_bit_cardinality);
-			//sax_print(invsax, paa_segments, sax_bit_cardinality);
-			//printf("\naaaaaaaaaaaaaaaaaaaa %d %f\n", cnt, mindist);fflush(stdout);
+			dbcp->get(dbcp, &key, &data, DB_SET_RANGE);
+			//printf("\nFetch :%s\nFetch :", key.data);
 			//ts_print(data.data, 256);
 
+			//printf("\n -----------\n ");fflush(stdout);
 
-			int prevposition=0;
-			while ((ret = dbcp->get(dbcp, &key, &data, DB_PREV)) == 0 && prevposition<range ){
-				prevposition++;
-     			}
-			prevposition=0;
-			while ((ret = dbcp->get(dbcp, &key, &data, DB_NEXT)) == 0 && prevposition<(range*2) ){
-				dist = my_ts_euclidean_distance((float *)qts,(float *)(data.data) , 256, mindist);
-                		if(dist<mindist)
-                		{
-                		        mindist=dist;
-					//memcpy(ts,data.data, sizeof(float) * timeseries_size);
-					//printf("\n");
-                                        //ts_print(data.data, 8);
-        	        	}
+			mindist = my_ts_euclidean_distance((float *) qts,(float *)(data.data) , 256, MAXFLOAT);
+			//printf("\n -----------\n ");fflush(stdout);
+
+			//printf("\nMINDIST %f",mindist); 
 	
-				prevposition++;
-     			}
-			//printf("\naaaaaaaaaaaaaaaaaaaa %d %f\n", cnt, mindist);fflush(stdout);
-			//break;
+			if(mindist!=0)
+			{
 			
-			avdistapprox+=mindist;
-		}
-if(EXACT==1)
-{
-	if(mindist==0)
-	{
-		mindist=0;
-		//memcpy(ts,data.data, sizeof(float) * timeseries_size);
-	}
-	else
-	{
+				//printf("\naaaaaaaaaaaaaaaaaaaa %d %f\n", cnt, mindist);fflush(stdout);
+				//ts_print(qts, 256);
+				//printf("\n");
+				//sax_print(sax, paa_segments,sax_bit_cardinality);
+				//sax_print(invsax, paa_segments, sax_bit_cardinality);
+				//printf("\naaaaaaaaaaaaaaaaaaaa %d %f\n", cnt, mindist);fflush(stdout);
+				//ts_print(data.data, 256);
 
 
-		MINDISTS=(float *) malloc(sizeof(float)*ts_num);
+				int prevposition=0;
+				while ((ret = dbcp->get(dbcp, &key, &data, DB_PREV)) == 0 && prevposition<range ){
+					prevposition++;
+     				}
+				prevposition=0;
+				while ((ret = dbcp->get(dbcp, &key, &data, DB_NEXT)) == 0 && prevposition<(range*2) ){
+					dist = my_ts_euclidean_distance((float *)qts,(float *)(data.data) , 256, mindist);
+                			if(dist<mindist)
+                			{
+                		        	mindist=dist;
+						//memcpy(ts,data.data, sizeof(float) * timeseries_size);
+						//printf("\n");
+                                        	//ts_print(data.data, 8);
+        	        		}
+	
+					prevposition++;
+     				}
+				//printf("\naaaaaaaaaaaaaaaaaaaa %d %f\n", cnt, mindist);fflush(stdout);
+				//break;
+				
+				avdistapprox+=mindist;
+			}
+
+			if(EXACT==1)
+			{
+				if(mindist==0)
+				{
+					mindist=0;
+					//memcpy(ts,data.data, sizeof(float) * timeseries_size);
+				}
+				else
+				{
 
 
-        	max_sax_cardinalities = (unsigned char *) malloc(sizeof(unsigned char) * paa_segments);
-		int i;
-        	for(i=0; i<paa_segments;i++)
-                	max_sax_cardinalities[i] = sax_bit_cardinality;
+					MINDISTS=(float *) malloc(sizeof(float)*ts_num);
 
 
-        	mindist_sqrt = ((float) timeseries_size / (float) paa_segments);
+        				max_sax_cardinalities = (unsigned char *) malloc(sizeof(unsigned char) * paa_segments);
+					int i;
+        				for(i=0; i<paa_segments;i++)
+                				max_sax_cardinalities[i] = sax_bit_cardinality;
 
 
- //printf("\nzzzzzzzzzzzzz %s", c_time_string);fflush(stdout);
+        				mindist_sqrt = ((float) timeseries_size / (float) paa_segments);
 
-		float * paa = (float *) malloc(sizeof(float) * paa_segments);
-                my_paa_from_ts(qts, paa, paa_segments, ts_values_per_segment);
-//printf("\nzzzzzzzzzzzzz %s", c_time_string);fflush(stdout);
 
-               	int ti;
-                for(ti=0; ti<NTHREADS; ti++) {
+
+					float * paa = (float *) malloc(sizeof(float) * paa_segments);
+                			my_paa_from_ts(qts, paa, paa_segments, ts_values_per_segment);
+
+               				int ti;
+                			for(ti=0; ti<NTHREADS; ti++) {
 	                                        arguments[ti].i = ti;
-                                        arguments[ti].from = ti*(ts_num / NTHREADS);
-                                        if(ti < (NTHREADS-1)) {
-                                                arguments[ti].to = (ti+1)*(ts_num / NTHREADS);
-                                        }
-                                        else {
-                                                arguments[ti].to = ts_num;
-                                        }
-                                        arguments[ti].paa = paa;
-                                        arguments[ti].lis = currqueue;//keys;//currqueue;
-                                        int ret = pthread_create(&workers[ti], NULL, compute_mindists, &arguments[ti]);
-                 }
+                                        	arguments[ti].from = ti*(ts_num / NTHREADS);
+                                        	if(ti < (NTHREADS-1)) {
+                                        	        arguments[ti].to = (ti+1)*(ts_num / NTHREADS);
+                                        	}
+                                        	else {
+                                        	        arguments[ti].to = ts_num;
+                                        	}
+                                        	arguments[ti].paa = paa;
+                                        	arguments[ti].lis = keys;//currqueue;
+                                        	int ret = pthread_create(&workers[ti], NULL, compute_mindists, &arguments[ti]);
+                 			}
 
-                 for(ti=0; ti<NTHREADS;ti++) {
-                   pthread_join(workers[ti], NULL);
-                 }
-
-
+                 			for(ti=0; ti<NTHREADS;ti++) {
+                 				  pthread_join(workers[ti], NULL);
+                 			}
 
 
-		int counti;
-                for(counti=0;counti<ts_num;counti++)
-                {
 
-                                        if(MINDISTS[counti]<=mindist)
-                                        {
-                                                //fseek(fp, counti*(sizeof(float)*timeseries_size), SEEK_SET);
-                                                //fread(ts, sizeof(float), timeseries_size, fp);
+
+					int counti;
+                			for(counti=0;counti<ts_num;counti++)
+                			{
+
+                                        	if(MINDISTS[counti]<=mindist)
+                                        	{
+                                                	//fseek(fp, counti*(sizeof(float)*timeseries_size), SEEK_SET);
+                                                	//fread(ts, sizeof(float), timeseries_size, fp);
                                                 
-						nodesvisited++;
-						//dist = my_ts_euclidean_distance((float *) qts,(float *) ts , 256, mindist);
-	   					key.data=currqueue[counti].invsax;
-	   					key.size=sizeof(unsigned char)*paa_segments;
-						dbcp->get(dbcp, &key, &data, DB_SET);
-                                                dist = my_ts_euclidean_distance((float *) qts,(float *) data.data , 256, mindist);
-                                                if(dist<mindist)
-                                                {
-							mindist=dist;
-							//memcpy(mqts,data.data, sizeof(float) * timeseries_size);
-							//memcpy(mqts,ts, sizeof(float) * timeseries_size);
-                                                        //printf("\nDistance:%f",dist);
-                                                        //ts_print((float *)data.data, 256);
-                                                }
+							nodesvisited++;
+							//dist = my_ts_euclidean_distance((float *) qts,(float *) ts , 256, mindist);
+	   						key.data=keys[counti].invsax;
+	   						key.size=sizeof(unsigned char)*paa_segments;
+							dbcp->get(dbcp, &key, &data, DB_SET);
+                                                	dist = my_ts_euclidean_distance((float *) qts,(float *) data.data , 256, mindist);
+                                                	if(dist<mindist)
+                                                	{
+								mindist=dist;
+								//memcpy(mqts,data.data, sizeof(float) * timeseries_size);
+								//memcpy(mqts,ts, sizeof(float) * timeseries_size);
+                                                	        //printf("\nDistance:%f",dist);
+                                                	        //ts_print((float *)data.data, 256);
+                                                	}
 
-                                        }
-        	}//end for
+                                        	}
+        				}//end for
 	
-                        //printf("\nDistance:%f\n",mindist); 
-                        //ts_print((float *)value, sax_bit_cardinality);
+                        		//printf("\nDistance:%f\n",mindist); 
+                        		//ts_print((float *)value, sax_bit_cardinality);
 
 
-                 free(MINDISTS);
+                 			free(MINDISTS);
 
 
 
 
-	}//end else db->get
+				}//end else db->get
 
-                //ts_print((float *)qts, 256);
-		//printf("\nDist:%f\n", mindist);
-                //ts_print((float *)mqts, 256);
-		//printf("\nDist:%f\n", mindist);
-		avdist+=mindist;
-}//end if exact==1
+	                	//ts_print((float *)qts, 256);
+				//printf("\nDist:%f\n", mindist);
+	                	//ts_print((float *)mqts, 256);
+				//printf("\nDist:%f\n", mindist);
+				avdist+=mindist;
+			}//end if exact==1
 	
 
-		//ts_print(ts, 8);
 
-	duration += timer_end(&start);
-	free(qts);
-	free(mqts);
-}
+			duration += timer_end(&start);
+			free(qts);
+			free(mqts);
+		}//end for queries
 
 
 	
-        printf("\n[STAT] Querying %lld records",   ts_num);fflush(stdout);
-        printf(" in %f seconds: ", duration);
+        	printf("\n[STAT] Querying %lld records",   ts_num);fflush(stdout);
+        	printf(" in %f seconds: ", duration);
 
-	if(queriesno>0)
-	{
-		printf("\nNodesVisited:%d", (nodesvisited/queriesno));
-		printf("\nAvdistapprox:%f", (avdistapprox/queriesno));
-		printf("\nAvdistexact :%f\n", (avdist/queriesno));
-	}
+		if(queriesno>0)
+		{
+			printf("\nNodesVisited:%d", (nodesvisited/queriesno));
+			printf("\nAvdistapprox:%f", (avdistapprox/queriesno));
+			printf("\nAvdistexact :%f\n", (avdist/queriesno));
+		}
 
-        int ts_loaded=0;
-        while (ts_loaded<ts_num)
-        {
-	 	free(currqueue[ts_loaded].invsax);
+
  		if(EXACT==1)
-	    		free(currqueue[ts_loaded].sax);
-                ts_loaded++;
-        }
-	//free(key.data);
-	//free(data.data);
+        	{
+			int ts_loaded=0;
+        		while (ts_loaded<ts_num)
+        		{
+	 			free(keys[ts_loaded].invsax);
+	    			free(keys[ts_loaded].sax);
+                		ts_loaded++;
+        		}
+		}
+
+
+		free(keys);
+
+		(void)fclose(qfp);
 
 
 
-	(void)fclose(qfp);
+
+		/* Close the cursor, then its database. */
+		if ((ret = dbcp->close(dbcp)) != 0) {
+			dbp->err(dbp, ret, "DBcursor->close");
+			goto err1;
+		}
+	
+		if ((ret = dbp->close(dbp, 0)) != 0) {
+			/*
+			 * This uses fprintf rather than dbp->err because the dbp has
+			 * been deallocated by dbp->close() and may no longer be used.
+			 */
+			fprintf(stderr,
+			    "%s: DB->close: %s\n", progname, db_strerror(ret));
+			return (1);
+		}
+	}//end if indexing!=1
+
 	free(ts);
 	free(sax);
 	//free(value);
 	free(invsax);
-
 	free(currqueue);
 
-	/*
-	 * Repeatly prompt the user for a record number, then retrieve and
-	 * display that record as well as the one after it. Quit on EOF or
-	 * when a zero record number is entered.
-	 */
-//	for (;;) {
-///		/* Get a record number. */
-//		printf("recno #> ");
-//		fflush(stdout);
-//		if (fgets(buf, sizeof(buf), stdin) == NULL)
-//			break;
-//		recno = atoi(buf);
-//		/*
-//		 * Zero is an invalid record number: exit when that (or a
-//		 * non-numeric string) is entered.
-//		 */
-//		if (recno == 0)
-//			break;
-//
-//		/*
-//		 * Reset the key each time, the dbp->get() routine returns
-//		 * the key and data pair, not just the key!
-//		 */
-//		key.data = &recno;
-//		key.size = sizeof(recno);
-//		if ((ret = dbcp->get(dbcp, &key, &data, DB_SET_RECNO)) != 0)
-//			goto get_err;
-//
-//		/* Display the key and data. */
-//		show("k/d\t", &key, &data);
-//
-//		/* DB_NEXT moves the cursor to the next record. */
-//		if ((ret = dbcp->get(dbcp, &key, &data, DB_NEXT)) != 0)
-//			goto get_err;
-//		
-//		/* Display the successor. */
-//		show("next\t", &key, &data);
-//
-//		/*
-//		 * Retrieve the record number for the successor into "recno"
-//		 * and print it. Set data flags to DB_DBT_USERMEM so that the
-//		 * record number will be retrieved into a proper, aligned
-//		 * integer, which is needed by some hardware platforms. It
-//		 * also makes it easier to print the value: no u_int32_t
-//		 * casting is needed.
-//		 */
-//		data.data = &recno;
-//		data.size = sizeof(recno);
-//		data.ulen = sizeof(recno);
-//		data.flags |= DB_DBT_USERMEM;
-//		if ((ret = dbcp->get(dbcp, &key, &data, DB_GET_RECNO)) != 0) {
-//get_err:		dbp->err(dbp, ret, "DBcursor->get");
-//			if (ret != DB_NOTFOUND && ret != DB_KEYEMPTY)
-//				goto err2;
-//		} else
-//			printf("retrieved recno: %lu\n", (u_long)recno);
-//
-//		/* Reset the data DBT. */
-//		memset(&data, 0, sizeof(data));
-//	}
 
-	/* Close the cursor, then its database. */
-	if ((ret = dbcp->close(dbcp)) != 0) {
-		dbp->err(dbp, ret, "DBcursor->close");
-		goto err1;
-	}
-
-	if ((ret = dbp->close(dbp, 0)) != 0) {
-		/*
-		 * This uses fprintf rather than dbp->err because the dbp has
-		 * been deallocated by dbp->close() and may no longer be used.
-		 */
-		fprintf(stderr,
-		    "%s: DB->close: %s\n", progname, db_strerror(ret));
-		return (1);
-	}
 
 	return (0);
 
