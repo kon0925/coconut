@@ -1697,6 +1697,8 @@ coconut(int ts_num, int memory, int EXACT, int queriesnumber, int indexing, int 
 		data.data=(float *)malloc(sizeof(float) * timeseries_size);
 
 		for (cnt = 0; cnt < queriesno; ++cnt) {
+			
+			mindist=MAXFLOAT;
 
 			qts = (float *)malloc(sizeof(float) * timeseries_size);
 			float * mqts = (float *)malloc(sizeof(float) * timeseries_size);
